@@ -91,13 +91,32 @@ def ingest_seed(input_dir: Path, output_dir: Path) -> None:
     df_all.to_csv(out_csv, index=False)
 
     # Compute bucket percentages per row and write one profile per government
-    dict_path = Path("etl/config/data_dictionary.yml")
+    # Resolve dictionary path robustly regardless of current working directory
+    etl_root = Path(__file__).resolve().parents[2]  # .../etl
+    candidate_paths = [
+        etl_root / "config" / "data_dictionary.yml",
+        Path("etl/config/data_dictionary.yml"),
+        Path("config/data_dictionary.yml"),
+    ]
+    dict_path = next((p for p in candidate_paths if p.exists()), None)
+    if dict_path is None:
+        raise FileNotFoundError(
+            f"Could not locate data_dictionary.yml. Tried: {', '.join(str(p) for p in candidate_paths)}"
+        )
     mapping = load_dictionary(dict_path)
 
     agg_dir = output_dir / "aggregates"
-    agg_dir.mkdir(exist_ok=True)
+    agg_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Ingest seed: {len(df_all)} rows -> {agg_dir}")
 
+    written = []
     for idx, row in df_all.iterrows():
+        # Debug: show iteration and ID
+        try:
+            dbg_id = str(row.get("government_id", "")).strip()
+        except Exception:
+            dbg_id = "<err>"
+        print(f"  row {idx}: id={dbg_id}")
         row_df = pd.DataFrame([row])
         rev_res, exp_res = compute_buckets(row_df, mapping)
         summary = add_summary(row_df, rev_res.total_sum, exp_res.total_sum)
@@ -118,4 +137,9 @@ def ingest_seed(input_dir: Path, output_dir: Path) -> None:
                 {"bucket": k, "amount": float(v), "pct_of_total": float(exp_res.percents[k])} for k, v in exp_res.totals.items()
             ],
         }
-        (agg_dir / f"profile_{gov_id}.json").write_text(json.dumps(profile))
+        out_file = agg_dir / f"profile_{gov_id}.json"
+        print(f"  writing {out_file}")
+        out_file.write_text(json.dumps(profile))
+        written.append(gov_id)
+    (agg_dir / "_manifest.txt").write_text("\n".join(written))
+    print(f"Wrote {len(written)} profiles: {', '.join(written)}")
