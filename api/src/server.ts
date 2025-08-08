@@ -8,39 +8,34 @@ app.use(cors());
 app.use(express.json());
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 4000;
-// Resolve to api/mock when running from api/ working directory
 const mockDir = path.resolve(process.cwd(), 'mock');
 
 // Health
 app.get('/health', (_req: Request, res: Response) => res.json({ ok: true }));
 
-// Governments search (very simple mock)
+// Governments search
 app.get('/governments/search', (req: Request, res: Response) => {
   const q = (req.query.q as string | undefined)?.toLowerCase() ?? '';
-  const profilesDir = path.join(mockDir, 'profiles');
-  const files = fs.readdirSync(profilesDir).filter(f => f.endsWith('.json'));
-  const results = files.map((f: string) => JSON.parse(fs.readFileSync(path.join(profilesDir, f), 'utf-8')))
-    .filter((p: any) => p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q))
-    .map((p: any) => ({ id: p.id, name: p.name, type: p.type, county: p.county }));
+  const profiles = readAllProfiles();
+  const results = profiles
+    .filter(p => (p.name || '').toLowerCase().includes(q) || (p.id || '').toLowerCase().includes(q))
+    .map(p => ({ id: p.id, name: p.name, type: p.type, county: p.county }));
   res.json({ results });
 });
 
 // Government profile
 app.get('/governments/:id/profile', (req: Request, res: Response) => {
   const { id } = req.params;
-  // Prefer ETL aggregate output if present
-  const etlProfile = path.resolve(process.cwd(), '..', 'etl', 'out', 'aggregates', `profile_${id.toUpperCase()}.json`);
+  const upper = id.toUpperCase();
+  const etlProfile = path.resolve(process.cwd(), '..', 'etl', 'out', 'aggregates', `profile_${upper}.json`);
   if (fs.existsSync(etlProfile)) {
-    const data = JSON.parse(fs.readFileSync(etlProfile, 'utf-8'));
-  const withPeers = attachPeerStats(data);
-  return res.json(withPeers);
+    const data = JSON.parse(fs.readFileSync(etlProfile, 'utf-8')) as Profile;
+    return res.json(attachPeerStats(data));
   }
-  // Fallback to mock
-  const file = path.join(mockDir, 'profiles', `${id.toUpperCase()}.json`);
+  const file = path.join(mockDir, 'profiles', `${upper}.json`);
   if (fs.existsSync(file)) {
-  const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
-  const withPeers = attachPeerStats(data);
-  return res.json(withPeers);
+    const data = JSON.parse(fs.readFileSync(file, 'utf-8')) as Profile;
+    return res.json(attachPeerStats(data));
   }
   return res.status(404).json({ error: 'Not found' });
 });
@@ -48,24 +43,22 @@ app.get('/governments/:id/profile', (req: Request, res: Response) => {
 // Financial Health Indicators for a government
 app.get('/governments/:id/health', (req: Request, res: Response) => {
   const { id } = req.params;
-  // load profile (prefer ETL), then compute health over peers
-  const etlProfile = path.resolve(process.cwd(), '..', 'etl', 'out', 'aggregates', `profile_${id.toUpperCase()}.json`);
+  const upper = id.toUpperCase();
+  const etlProfile = path.resolve(process.cwd(), '..', 'etl', 'out', 'aggregates', `profile_${upper}.json`);
   let baseProfile: Profile | undefined;
   if (fs.existsSync(etlProfile)) {
     baseProfile = JSON.parse(fs.readFileSync(etlProfile, 'utf-8')) as Profile;
   } else {
-    const file = path.join(mockDir, 'profiles', `${id.toUpperCase()}.json`);
+    const file = path.join(mockDir, 'profiles', `${upper}.json`);
     if (fs.existsSync(file)) {
       baseProfile = JSON.parse(fs.readFileSync(file, 'utf-8')) as Profile;
     }
   }
   if (!baseProfile) return res.status(404).json({ error: 'Not found' });
 
-  // Enrich with peers and trends
   const profile = attachPeerStats(baseProfile);
   const peers = readAllProfilesOfType(profile.type).map(p => attachPeerStats(p));
 
-  // helpers
   const totalRev = sumAmount(profile.revenues);
   const totalExp = sumAmount(profile.expenditures);
   const taxesPct = (profile.revenues || []).find(b => b.bucket === 'Taxes')?.pct_of_total ?? 0;
@@ -78,14 +71,10 @@ app.get('/governments/:id/health', (req: Request, res: Response) => {
     return rv ? (rv - ev) / rv : 0;
   });
 
-  // simple scoring 1-5
   function scoreMargin(v: number) { if (v < -0.05) return 1; if (v < 0) return 2; if (v < 0.05) return 3; if (v < 0.15) return 4; return 5; }
   function scoreFund(v: number) { if (v < 0.05) return 1; if (v < 0.1) return 2; if (v < 0.2) return 3; if (v < 0.4) return 4; return 5; }
-  function scoreCenter(v: number) { // neutral around 40%
-    const p = v; if (p < 0.2) return 2; if (p < 0.3) return 3; if (p <= 0.5) return 4; if (p <= 0.7) return 3; return 2;
-  }
+  function scoreCenter(v: number) { const p = v; if (p < 0.2) return 2; if (p < 0.3) return 3; if (p <= 0.5) return 4; if (p <= 0.7) return 3; return 2; }
 
-  // percentiles vs peers
   function percentile(values: number[], v: number) {
     const sorted = [...values].sort((a,b)=>a-b);
     const idx = sorted.findIndex(x => v <= x);
@@ -129,16 +118,11 @@ app.get('/types/:government_type/summary', (req: Request, res: Response) => {
   res.json({ government_type, count, filing_stats: { on_time: count, late: 0 } });
 });
 
-// Dollars explorer placeholder
 // List government types with counts
 app.get('/types', (_req: Request, res: Response) => {
-  const profilesDir = path.join(mockDir, 'profiles');
-  const files = fs.readdirSync(profilesDir).filter(f => f.endsWith('.json'));
+  const profiles = readAllProfiles();
   const typesMap = new Map<string, number>();
-  files.forEach(f => {
-    const p = JSON.parse(fs.readFileSync(path.join(profilesDir, f), 'utf-8')) as Profile;
-    typesMap.set(p.type, (typesMap.get(p.type) || 0) + 1);
-  });
+  profiles.forEach(p => typesMap.set(p.type, (typesMap.get(p.type) || 0) + 1));
   const types = Array.from(typesMap.entries()).map(([name, count]) => ({ name, count }));
   res.json({ types });
 });
@@ -180,20 +164,44 @@ type Profile = {
   peers?: { group: string; size: number; averages: { revenues?: Bucket[]; expenditures?: Bucket[] } };
   ranks?: { within_type: { total_revenues?: number; total_expenditures?: number; taxes?: number; public_safety?: number } };
   trends?: { revenues?: number[]; expenditures?: number[] };
+  summary?: { ending_balance?: number };
 };
 
-function readAllProfilesOfType(govType: string): Profile[] {
+function readAllProfiles(): Profile[] {
+  const arr: Profile[] = [];
+  const etlDir = path.resolve(process.cwd(), '..', 'etl', 'out', 'aggregates');
+  if (fs.existsSync(etlDir)) {
+    const etlFiles = fs.readdirSync(etlDir).filter(f => f.startsWith('profile_') && f.endsWith('.json'));
+    etlFiles.forEach(f => {
+      try {
+        const p = JSON.parse(fs.readFileSync(path.join(etlDir, f), 'utf-8')) as Profile;
+        if (p && p.id) arr.push(p);
+      } catch {}
+    });
+  }
   const profilesDir = path.join(mockDir, 'profiles');
-  const files = fs.readdirSync(profilesDir).filter(f => f.endsWith('.json'));
-  return files
-    .map((f: string) => JSON.parse(fs.readFileSync(path.join(profilesDir, f), 'utf-8')) as Profile)
-    .filter(p => p.type === govType);
+  if (fs.existsSync(profilesDir)) {
+    const files = fs.readdirSync(profilesDir).filter(f => f.endsWith('.json'));
+    files.forEach(f => {
+      try {
+        const p = JSON.parse(fs.readFileSync(path.join(profilesDir, f), 'utf-8')) as Profile;
+        if (p && p.id) arr.push(p);
+      } catch {}
+    });
+  }
+  const seen = new Set<string>();
+  const uniq: Profile[] = [];
+  for (const p of arr) {
+    if (!p.id) continue;
+    if (seen.has(p.id)) continue;
+    seen.add(p.id);
+    uniq.push(p);
+  }
+  return uniq;
 }
 
-function readAllProfiles(): Profile[] {
-  const profilesDir = path.join(mockDir, 'profiles');
-  const files = fs.readdirSync(profilesDir).filter(f => f.endsWith('.json'));
-  return files.map((f: string) => JSON.parse(fs.readFileSync(path.join(profilesDir, f), 'utf-8')) as Profile);
+function readAllProfilesOfType(govType: string): Profile[] {
+  return readAllProfiles().filter(p => p.type === govType);
 }
 
 function sumAmount(buckets?: Bucket[]): number {
@@ -213,7 +221,6 @@ function averageBuckets(profiles: Profile[], key: 'revenues' | 'expenditures'): 
     const avg = profiles.length ? total / profiles.length : 0;
     out.push({ bucket: name, amount: avg, pct_of_total: 0 });
   });
-  // compute pct_of_total on averages
   const totalAvg = sumAmount(out);
   return out.map(b => ({ ...b, pct_of_total: totalAvg ? b.amount / totalAvg : 0 }));
 }
@@ -224,13 +231,11 @@ function attachPeerStats(profile: Profile): Profile {
     revenues: averageBuckets(peers, 'revenues'),
     expenditures: averageBuckets(peers, 'expenditures'),
   };
-  // Simple ranks by total amounts within type
   const totals = peers.map(p => ({ id: p.id, rev: sumAmount(p.revenues), exp: sumAmount(p.expenditures) }));
   const revSorted = [...totals].sort((a, b) => b.rev - a.rev).map(t => t.id);
   const expSorted = [...totals].sort((a, b) => b.exp - a.exp).map(t => t.id);
   const rankRev = revSorted.indexOf(profile.id) + 1 || undefined;
   const rankExp = expSorted.indexOf(profile.id) + 1 || undefined;
-  // Bucket-specific ranks (Taxes, Public Safety)
   const taxTotals = peers.map(p => ({ id: p.id, amount: (p.revenues||[]).find(b => b.bucket === 'Taxes')?.amount || 0 }));
   const taxSorted = [...taxTotals].sort((a,b)=> b.amount - a.amount).map(t=>t.id);
   const psTotals = peers.map(p => ({ id: p.id, amount: (p.expenditures||[]).find(b => b.bucket === 'Public Safety')?.amount || 0 }));
@@ -238,13 +243,11 @@ function attachPeerStats(profile: Profile): Profile {
   const rankTaxes = taxSorted.indexOf(profile.id) + 1 || undefined;
   const rankPS = psSorted.indexOf(profile.id) + 1 || undefined;
 
-  // Simple trends (mock last 4 years) based on totals +/- small variation
   const totalRev = sumAmount(profile.revenues);
   const totalExp = sumAmount(profile.expenditures);
   const revTrend = [0.9, 1.0, 1.1, 1.05].map(m => Math.round(totalRev * m));
   const expTrend = [0.85, 0.92, 0.98, 1.0].map(m => Math.round(totalExp * m));
 
-  // Header/meta defaults
   const websiteMap: Record<string, string> = {
     CIN: 'https://www.cincinnati-oh.gov/',
     CLE: 'https://www.clevelandohio.gov/',

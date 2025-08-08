@@ -1,4 +1,5 @@
 import Sparkline from "../../../components/Sparkline";
+import BucketsCard from "../../../components/BucketsCard";
 
 type Profile = {
   id: string;
@@ -77,61 +78,23 @@ export default async function GovernmentProfile({ params }: { params: { id: stri
               </ul>
             </div>
 
-            <div className="card">
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                <h3>Revenues <span className="metric">{((profile.revenues||[]).reduce((a,b)=>a+b.amount,0)).toLocaleString()}</span></h3>
-                <div className="toggle"><input type="checkbox" aria-label="Show statewide averages"/> Show statewide averages</div>
-              </div>
-              <Sparkline data={profile.trends?.revenues} color="#1f9d55" />
-              <ul className="list">
-                {profile.revenues?.map(r => {
-                  const peerPct = profile.peers?.averages.revenues?.find(pr => pr.bucket === r.bucket)?.pct_of_total ?? 0;
-                  const delta = r.pct_of_total - peerPct;
-                  const up = delta > 0.0005;
-                  const down = delta < -0.0005;
-                  const deltaPct = Math.abs(delta * 100);
-                  return (
-                    <li key={r.bucket} title={`Peer avg: ${(peerPct*100).toFixed(0)}%`}>
-                      <span>{r.bucket}</span>
-                      <span>
-                        {r.amount.toLocaleString()} <span className="pct">({Math.round(r.pct_of_total*100)}%)</span>
-                        {(up || down) && (
-                          <span className={`delta ${up ? 'delta-up' : 'delta-down'}`}>{up ? '▲' : '▼'} {deltaPct.toFixed(0)}%</span>
-                        )}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
+            <BucketsCard
+              title="Revenues"
+              total={(profile.revenues||[]).reduce((a,b)=>a+b.amount,0)}
+              buckets={profile.revenues || []}
+              peerAverages={profile.peers?.averages.revenues}
+              trend={profile.trends?.revenues}
+              color="#1f9d55"
+            />
 
-            <div className="card">
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                <h3>Expenditures <span className="metric">{((profile.expenditures||[]).reduce((a,b)=>a+b.amount,0)).toLocaleString()}</span></h3>
-                <div className="toggle"><input type="checkbox" aria-label="Show statewide averages"/> Show statewide averages</div>
-              </div>
-              <Sparkline data={profile.trends?.expenditures} color="#6b5bd2" />
-              <ul className="list">
-                {profile.expenditures?.map(e => {
-                  const peerPct = profile.peers?.averages.expenditures?.find(pe => pe.bucket === e.bucket)?.pct_of_total ?? 0;
-                  const delta = e.pct_of_total - peerPct;
-                  const up = delta > 0.0005;
-                  const down = delta < -0.0005;
-                  const deltaPct = Math.abs(delta * 100);
-                  return (
-                    <li key={e.bucket} title={`Peer avg: ${(peerPct*100).toFixed(0)}%`}>
-                      <span>{e.bucket}</span>
-                      <span>
-                        {e.amount.toLocaleString()} <span className="pct">({Math.round(e.pct_of_total*100)}%)</span>
-                        {(up || down) && (
-                          <span className={`delta ${up ? 'delta-up' : 'delta-down'}`}>{up ? '▲' : '▼'} {deltaPct.toFixed(0)}%</span>
-                        )}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
+            <BucketsCard
+              title="Expenditures"
+              total={(profile.expenditures||[]).reduce((a,b)=>a+b.amount,0)}
+              buckets={profile.expenditures || []}
+              peerAverages={profile.peers?.averages.expenditures}
+              trend={profile.trends?.expenditures}
+              color="#6b5bd2"
+            />
           </div>
 
           {profile.peers && (
