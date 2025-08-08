@@ -1,0 +1,41 @@
+{
+  "id": "CIN",
+  "name": "Cincinnati",
+  "type": "City",
+  "county": "Hamilton",
+  "year": 2024,
+  "basis": "GAAP",
+  "header": {
+    "name": "Cincinnati",
+    "type": "City",
+    "county": "Hamilton",
+    "basis": "GAAP",
+    "filing_status": { "on_time": true, "date": "2025-04-01" }
+  },
+  "summary": {
+    "beginning_balance": 300000000,
+    "revenues": 1230000000,
+    "other_increases": 20000000,
+    "expenditures": 1440000000,
+    "other_decreases": 15000000,
+    "ending_balance": -69000000
+  },
+  "revenues": [
+    { "bucket": "Taxes", "amount": 850000000, "pct_of_total": 0.691 },
+    { "bucket": "Intergovernmental", "amount": 200000000, "pct_of_total": 0.163 }
+  ],
+  "expenditures": [
+    { "bucket": "Public Safety", "amount": 600000000, "pct_of_total": 0.417 },
+    { "bucket": "Utilities", "amount": 220000000, "pct_of_total": 0.153 }
+  ],
+  "rankings": [
+    { "metric": "total_revenues", "rank": 2, "of_n": 250, "direction": "desc" }
+  ],
+  "fhi": {
+    "general_fund": [
+      { "id": "gf_cash_balance", "status": "positive" },
+      { "id": "gf_expenditure_growth", "status": "caution" }
+    ]
+  },
+  "location": { "address": "801 Plum St, Cincinnati, OH", "lat": 39.1031, "lon": -84.5120 }
+}

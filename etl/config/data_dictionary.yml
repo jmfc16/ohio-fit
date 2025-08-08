@@ -1,0 +1,46 @@
+# Data dictionary for Ohio summarized reports (seed: City GAAP 2023–2024)
+
+sources:
+  - id: city_gaap_2023
+    filename_pattern: City_*_GAAP_Summarized.*
+    entity_type: City
+    basis: GAAP
+    year: 2023
+  - id: city_gaap_2024
+    filename_pattern: City_*_GAAP_Summarized.*
+    entity_type: City
+    basis: GAAP
+    year: 2024
+
+columns:
+  government_id: { type: string, description: Short stable identifier (e.g., CIN) }
+  name: { type: string }
+  type: { type: string }
+  county: { type: string }
+  year: { type: integer }
+  basis: { type: string }
+  Beginning Balance: { type: number }
+  Other Increases: { type: number }
+  Other Decreases: { type: number }
+
+# FIT-style buckets mapping
+buckets:
+  revenues:
+    Taxes: ["Taxes"]
+    Intergovernmental: ["Intergovernmental"]
+    Charges for Services: ["Charges for Services"]
+    Licenses & Permits: ["Licenses & Permits"]
+    Fines & Penalties: ["Fines & Penalties"]
+    Miscellaneous: ["Miscellaneous"]
+    Other Financing: ["Other Financing"]
+  expenditures:
+    Public Safety: ["Public Safety"]
+    Utilities: ["Utilities", "Enterprise Operations", "Water", "Sewer", "Electric"]
+    General Government: ["General Government"]
+    Transportation: ["Transportation"]
+    Culture & Recreation: ["Culture & Recreation"]
+    Natural & Economic Environment: ["Natural & Economic Environment", "Community Development"]
+    Social Services: ["Social Services", "Health", "Human Services"]
+    Capital Outlay: ["Capital Outlay"]
+    Debt Service: ["Debt Service"]
+    Transfers: ["Transfers"]
