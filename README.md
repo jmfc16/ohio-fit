@@ -29,6 +29,10 @@ See per-folder READMEs for detailed steps.
 - Seed: City 2023–2024 GAAP summarized data
 - Expand: other government types and bases, FHI ingestion, prod deploy via CDK
 
+## Changelog
+
+See [CHANGELOG.md](./CHANGELOG.md) for details.
+
 ## License
 
 MIT
