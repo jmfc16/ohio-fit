@@ -1,3 +1,5 @@
+import Sparkline from "../../../components/Sparkline";
+
 type Profile = {
   id: string;
   name: string;
@@ -7,6 +9,9 @@ type Profile = {
   summary?: any;
   revenues?: Array<{ bucket: string; amount: number; pct_of_total: number }>;
   expenditures?: Array<{ bucket: string; amount: number; pct_of_total: number }>;
+  peers?: { group: string; size: number; averages: { revenues?: Array<{ bucket: string; amount: number; pct_of_total: number }>; expenditures?: Array<{ bucket: string; amount: number; pct_of_total: number }> } };
+  ranks?: { within_type: { total_revenues?: number; total_expenditures?: number; taxes?: number; public_safety?: number } };
+  trends?: { revenues?: number[]; expenditures?: number[] };
 };
 
 async function getProfile(id: string): Promise<Profile> {
@@ -20,41 +25,163 @@ export default async function GovernmentProfile({ params }: { params: { id: stri
   const profile = await getProfile(params.id);
   return (
     <article>
-      <h1>{profile.name}</h1>
-      <p>{profile.type} — {profile.county} County</p>
-
-      <section aria-labelledby="glance">
-        <h2 id="glance">Finances at a Glance</h2>
-        <div>
-          <strong>Beginning balance:</strong> {profile.summary?.beginning_balance?.toLocaleString?.()}
+      <div className="breadcrumbs">Explore / Individual Governments</div>
+      <div className="page-title">
+        <h1 style={{ margin: 0 }}>{profile.name}</h1>
+      </div>
+      <div className="chips" style={{ marginTop: 6, marginBottom: 12 }}>
+        <span className="chip">{profile.type}</span>
+        <span className="chip">{profile.county} County</span>
+        {!!profile.header?.website && (
+          <a className="chip" href={profile.header.website} target="_blank" rel="noopener noreferrer">Website</a>
+        )}
+        <span className="chip status"><span className="dot"/> {profile.header?.filing_status?.summary ?? 'Filed on time'}</span>
+      </div>
+      {!!profile.header?.filing_status && (
+        <div className="subtle" style={{ marginTop: -6, marginBottom: 12 }}>
+          FY {profile.header.filing_status.fy}
+          {profile.header.filing_status.filed_date ? (
+            <>
+              {" • "}
+              <span title="Date the annual filing was submitted">
+                Filed <time dateTime={profile.header.filing_status.filed_date}>{profile.header.filing_status.filed_date}</time>
+              </span>
+            </>
+          ) : null}
+          {profile.header.filing_status.revised_date ? (
+            <>
+              {" • "}
+              <span title="Date the filing was last revised">
+                Revised <time dateTime={profile.header.filing_status.revised_date}>{profile.header.filing_status.revised_date}</time>
+              </span>
+            </>
+          ) : null}
         </div>
+      )}
+
+      <div className="grid">
         <div>
-          <strong>Ending balance:</strong> {profile.summary?.ending_balance?.toLocaleString?.()}
+          <div className="cards">
+            <div className="card">
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <h3>Financial Summary</h3>
+                <span className="subtle">FY {profile.header?.filing_status?.fy ?? 2024}</span>
+              </div>
+              <ul className="list">
+                <li><span>Beginning Balances</span><span className="metric">{profile.summary?.beginning_balance?.toLocaleString?.()}</span></li>
+                <li><span>Revenues</span><span className="metric">{(profile.revenues||[]).reduce((a,b)=>a+b.amount,0).toLocaleString()}</span></li>
+                <li><span>Other Increases</span><span className="metric">0</span></li>
+                <li><span>Expenditures</span><span className="metric">{(profile.expenditures||[]).reduce((a,b)=>a+b.amount,0).toLocaleString()}</span></li>
+                <li><span>Other Decreases</span><span className="metric">0</span></li>
+                <li><span>Ending Balances</span><span className="metric">{profile.summary?.ending_balance?.toLocaleString?.()}</span></li>
+              </ul>
+            </div>
+
+            <div className="card">
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <h3>Revenues <span className="metric">{((profile.revenues||[]).reduce((a,b)=>a+b.amount,0)).toLocaleString()}</span></h3>
+                <div className="toggle"><input type="checkbox" aria-label="Show statewide averages"/> Show statewide averages</div>
+              </div>
+              <Sparkline data={profile.trends?.revenues} color="#1f9d55" />
+              <ul className="list">
+                {profile.revenues?.map(r => {
+                  const peerPct = profile.peers?.averages.revenues?.find(pr => pr.bucket === r.bucket)?.pct_of_total ?? 0;
+                  const delta = r.pct_of_total - peerPct;
+                  const up = delta > 0.0005;
+                  const down = delta < -0.0005;
+                  const deltaPct = Math.abs(delta * 100);
+                  return (
+                    <li key={r.bucket} title={`Peer avg: ${(peerPct*100).toFixed(0)}%`}>
+                      <span>{r.bucket}</span>
+                      <span>
+                        {r.amount.toLocaleString()} <span className="pct">({Math.round(r.pct_of_total*100)}%)</span>
+                        {(up || down) && (
+                          <span className={`delta ${up ? 'delta-up' : 'delta-down'}`}>{up ? '▲' : '▼'} {deltaPct.toFixed(0)}%</span>
+                        )}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+
+            <div className="card">
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <h3>Expenditures <span className="metric">{((profile.expenditures||[]).reduce((a,b)=>a+b.amount,0)).toLocaleString()}</span></h3>
+                <div className="toggle"><input type="checkbox" aria-label="Show statewide averages"/> Show statewide averages</div>
+              </div>
+              <Sparkline data={profile.trends?.expenditures} color="#6b5bd2" />
+              <ul className="list">
+                {profile.expenditures?.map(e => {
+                  const peerPct = profile.peers?.averages.expenditures?.find(pe => pe.bucket === e.bucket)?.pct_of_total ?? 0;
+                  const delta = e.pct_of_total - peerPct;
+                  const up = delta > 0.0005;
+                  const down = delta < -0.0005;
+                  const deltaPct = Math.abs(delta * 100);
+                  return (
+                    <li key={e.bucket} title={`Peer avg: ${(peerPct*100).toFixed(0)}%`}>
+                      <span>{e.bucket}</span>
+                      <span>
+                        {e.amount.toLocaleString()} <span className="pct">({Math.round(e.pct_of_total*100)}%)</span>
+                        {(up || down) && (
+                          <span className={`delta ${up ? 'delta-up' : 'delta-down'}`}>{up ? '▲' : '▼'} {deltaPct.toFixed(0)}%</span>
+                        )}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </div>
+
+          {profile.peers && (
+            <div className="panel" style={{ marginTop:16 }}>
+              <h3>Peer Averages ({profile.peers.group})</h3>
+              <div className="subtle">Peers: {profile.peers.size}</div>
+              <div style={{ display: 'flex', gap: '2rem', marginTop:8 }}>
+                <div>
+                  <h4 style={{ margin:'8px 0' }}>Revenues</h4>
+                  <ul className="list">
+                    {profile.peers.averages.revenues?.map(r => (
+                      <li key={r.bucket}><span>{r.bucket}</span><span>{Math.round(r.amount).toLocaleString()} <span className="pct">({Math.round(r.pct_of_total*100)}%)</span></span></li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <h4 style={{ margin:'8px 0' }}>Expenditures</h4>
+                  <ul className="list">
+                    {profile.peers.averages.expenditures?.map(e => (
+                      <li key={e.bucket}><span>{e.bucket}</span><span>{Math.round(e.amount).toLocaleString()} <span className="pct">({Math.round(e.pct_of_total*100)}%)</span></span></li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-      </section>
 
-      <section aria-labelledby="revenues">
-        <h2 id="revenues">Revenues</h2>
-        <ul>
-          {profile.revenues?.map(r => (
-            <li key={r.bucket}>{r.bucket}: {r.amount.toLocaleString()} ({Math.round(r.pct_of_total * 100)}%)</li>
-          ))}
-        </ul>
-      </section>
+        <aside>
+          <div className="panel rankings">
+            <h3>Rankings</h3>
+            <div className="subtle">Among {profile.type}s (N={profile.peers?.size ?? '—'})</div>
+            <ul>
+              <li title={`Within ${profile.type}${profile.peers?.size ? ` (N=${profile.peers.size})` : ''}`}># {profile.ranks?.within_type.total_revenues ?? '—'} Revenues</li>
+              <li title={`Within ${profile.type}${profile.peers?.size ? ` (N=${profile.peers.size})` : ''}`}># {profile.ranks?.within_type.total_expenditures ?? '—'} Expenditures</li>
+              <li title={`Within ${profile.type}${profile.peers?.size ? ` (N=${profile.peers.size})` : ''}`}># {profile.ranks?.within_type.taxes ?? '—'} Taxes (Revenues)</li>
+              <li title={`Within ${profile.type}${profile.peers?.size ? ` (N=${profile.peers.size})` : ''}`}># {profile.ranks?.within_type.public_safety ?? '—'} Public Safety (Expenditures)</li>
+            </ul>
+          </div>
+          <div className="panel" style={{ marginTop:16 }}>
+            <h3>Location</h3>
+            <div className="subtle">{profile.county} County</div>
+          </div>
+        </aside>
+      </div>
 
-      <section aria-labelledby="expenditures">
-        <h2 id="expenditures">Expenditures</h2>
-        <ul>
-          {profile.expenditures?.map(e => (
-            <li key={e.bucket}>{e.bucket}: {e.amount.toLocaleString()} ({Math.round(e.pct_of_total * 100)}%)</li>
-          ))}
-        </ul>
-      </section>
-
-      <section aria-labelledby="export">
-        <h2 id="export">Export</h2>
+      <div className="panel" style={{ marginTop:16 }}>
+        <h3>Export</h3>
         <a href={(process.env.API_BASE_URL || 'http://localhost:4000') + '/export'}>Download CSV</a>
-      </section>
+      </div>
     </article>
   );
 }
