@@ -10,6 +10,18 @@ type Health = {
   indicators: Indicator[];
 };
 
+async function getGovernments(): Promise<Array<{ id: string; name: string; type: string; county: string }>> {
+  const base = process.env.API_BASE_URL || 'http://localhost:4000';
+  try {
+    const res = await fetch(`${base}/governments/search?q=`, { cache: 'no-store' });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.results || [];
+  } catch {
+    return [];
+  }
+}
+
 async function getHealth(id: string): Promise<Health | null> {
   const base = process.env.API_BASE_URL || 'http://localhost:4000';
   try {
@@ -35,7 +47,10 @@ function Gauge({ score }: { score: number }) {
 
 export default async function HealthPage({ searchParams }: { searchParams: { id?: string } }) {
   const id = searchParams.id || 'CIN';
-  const data = await getHealth(id);
+  const [data, governments] = await Promise.all([
+    getHealth(id),
+    getGovernments(),
+  ]);
   if (!data) {
     return (
       <article>
@@ -47,6 +62,19 @@ export default async function HealthPage({ searchParams }: { searchParams: { id?
         <div className="panel">
           <h3>Not available</h3>
           <div className="subtle">Health indicators aren’t available for this government yet. Try another ID or restart the API server to pick up the new endpoint.</div>
+        </div>
+        <div className="chips" style={{ marginTop: 6, marginBottom: 12 }}>
+          <form action="/health" method="get" style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+            <label className="chip" style={{gap:4}}>
+              <span className="subtle">Government</span>
+              <select name="id" defaultValue={id} style={{border:0,outline:0,background:'transparent'}}>
+                {governments.map(g => (
+                  <option key={g.id} value={g.id}>{g.name} ({g.id})</option>
+                ))}
+              </select>
+            </label>
+            <button className="chip" type="submit">View</button>
+          </form>
         </div>
       </article>
     );
@@ -61,6 +89,17 @@ export default async function HealthPage({ searchParams }: { searchParams: { id?
         <span className="chip">{data.type}</span>
         <span className="chip">FY {data.fiscal_year}</span>
         <span className="chip">Peers: {data.peers.size}</span>
+        <form action="/health" method="get" style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          <label className="chip" style={{gap:4}}>
+            <span className="subtle">Government</span>
+            <select name="id" defaultValue={id} style={{border:0,outline:0,background:'transparent'}}>
+              {(governments || []).map(g => (
+                <option key={g.id} value={g.id}>{g.name} ({g.id})</option>
+              ))}
+            </select>
+          </label>
+          <button className="chip" type="submit">View</button>
+        </form>
       </div>
 
       <div className="panel">
