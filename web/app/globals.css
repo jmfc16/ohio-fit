@@ -59,6 +59,14 @@ a{color:var(--brand);text-decoration:none}
 .rankings li:last-child{border-bottom:0}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 
+/* Bars list for dollars page */
+.bars{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
+.bars li{display:grid;grid-template-columns:160px 1fr 60px;align-items:center;gap:8px}
+.bars .label{color:var(--text)}
+.bars .bar{background:#f1f5f9;border:1px solid var(--border);height:12px;border-radius:999px;overflow:hidden}
+.bars .fill{background:linear-gradient(90deg,var(--brand),var(--violet));height:100%}
+.bars .value{color:var(--muted);text-align:right}
+
 @media (max-width: 1000px){
   .app{grid-template-columns:1fr}
   .sidebar{display:none}

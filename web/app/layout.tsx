@@ -13,8 +13,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <a href="/">Explore</a>
               <a href="/governments/CIN">Individual Governments</a>
               <a href="/types">Government Types</a>
-              <a href="#">Navigate By Dollars</a>
-              <a href="#">Financial Health</a>
+              <a href="/dollars">Navigate By Dollars</a>
+              <a href="/health">Financial Health</a>
               <a href="#">Data Extracts</a>
               <a href="#">About</a>
               <a href="#">Help</a>

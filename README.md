@@ -1,5 +1,7 @@
 # Ohio Financial Intelligence Tool (FIT) – Public Clone
 
+[![CI](https://github.com/jmfc16/ohio-fit/actions/workflows/ci.yml/badge.svg)](https://github.com/jmfc16/ohio-fit/actions/workflows/ci.yml)
+
 A production-grade, serverless web app to explore Ohio local government finances (starting with Cities, GAAP basis), inspired by Washington’s FIT. Public, no-login access with sharable URLs, exports, peer overlays, rankings, and Ohio Financial Health Indicators (FHI).
 
 ## Monorepo layout

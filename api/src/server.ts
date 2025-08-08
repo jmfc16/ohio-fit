@@ -45,6 +45,82 @@ app.get('/governments/:id/profile', (req: Request, res: Response) => {
   return res.status(404).json({ error: 'Not found' });
 });
 
+// Financial Health Indicators for a government
+app.get('/governments/:id/health', (req: Request, res: Response) => {
+  const { id } = req.params;
+  // load profile (prefer ETL), then compute health over peers
+  const etlProfile = path.resolve(process.cwd(), '..', 'etl', 'out', 'aggregates', `profile_${id.toUpperCase()}.json`);
+  let baseProfile: Profile | undefined;
+  if (fs.existsSync(etlProfile)) {
+    baseProfile = JSON.parse(fs.readFileSync(etlProfile, 'utf-8')) as Profile;
+  } else {
+    const file = path.join(mockDir, 'profiles', `${id.toUpperCase()}.json`);
+    if (fs.existsSync(file)) {
+      baseProfile = JSON.parse(fs.readFileSync(file, 'utf-8')) as Profile;
+    }
+  }
+  if (!baseProfile) return res.status(404).json({ error: 'Not found' });
+
+  // Enrich with peers and trends
+  const profile = attachPeerStats(baseProfile);
+  const peers = readAllProfilesOfType(profile.type).map(p => attachPeerStats(p));
+
+  // helpers
+  const totalRev = sumAmount(profile.revenues);
+  const totalExp = sumAmount(profile.expenditures);
+  const taxesPct = (profile.revenues || []).find(b => b.bucket === 'Taxes')?.pct_of_total ?? 0;
+  const psPct = (profile.expenditures || []).find(b => b.bucket === 'Public Safety')?.pct_of_total ?? 0;
+  const endingBal = (profile as any).summary?.ending_balance || 0;
+  const opMargin = totalRev ? (totalRev - totalExp) / totalRev : 0;
+  const fundBal = totalExp ? endingBal / totalExp : 0;
+  const opTrend = (profile.trends?.revenues || []).map((rv, i) => {
+    const ev = profile.trends?.expenditures?.[i] ?? 0;
+    return rv ? (rv - ev) / rv : 0;
+  });
+
+  // simple scoring 1-5
+  function scoreMargin(v: number) { if (v < -0.05) return 1; if (v < 0) return 2; if (v < 0.05) return 3; if (v < 0.15) return 4; return 5; }
+  function scoreFund(v: number) { if (v < 0.05) return 1; if (v < 0.1) return 2; if (v < 0.2) return 3; if (v < 0.4) return 4; return 5; }
+  function scoreCenter(v: number) { // neutral around 40%
+    const p = v; if (p < 0.2) return 2; if (p < 0.3) return 3; if (p <= 0.5) return 4; if (p <= 0.7) return 3; return 2;
+  }
+
+  // percentiles vs peers
+  function percentile(values: number[], v: number) {
+    const sorted = [...values].sort((a,b)=>a-b);
+    const idx = sorted.findIndex(x => v <= x);
+    const rank = idx === -1 ? sorted.length : idx + 1;
+    return sorted.length ? rank / sorted.length : 0;
+  }
+  const peerMargins = peers.map(p => {
+    const tr = sumAmount(p.revenues); const te = sumAmount(p.expenditures); return tr ? (tr - te)/tr : 0;
+  });
+  const peerFunds = peers.map(p => {
+    const te = sumAmount(p.expenditures); const eb = (p as any).summary?.ending_balance || 0; return te ? eb/te : 0;
+  });
+  const peerTaxes = peers.map(p => (p.revenues || []).find(b => b.bucket === 'Taxes')?.pct_of_total ?? 0);
+  const peerPS = peers.map(p => (p.expenditures || []).find(b => b.bucket === 'Public Safety')?.pct_of_total ?? 0);
+
+  const ind = [
+    { key: 'operating_margin', label: 'Operating Margin', value: opMargin, unit: 'pct', score: scoreMargin(opMargin), percentile: percentile(peerMargins, opMargin), trend: opTrend },
+    { key: 'fund_balance', label: 'Fund Balance as % of Expenditures', value: fundBal, unit: 'pct', score: scoreFund(fundBal), percentile: percentile(peerFunds, fundBal), trend: [] as number[], benchmark: { warn: 0.05, good: 0.2 } },
+    { key: 'tax_reliance', label: 'Taxes Share of Revenues', value: taxesPct, unit: 'pct', score: scoreCenter(taxesPct), percentile: percentile(peerTaxes, taxesPct), trend: [] as number[] },
+    { key: 'public_safety_burden', label: 'Public Safety Share of Expenditures', value: psPct, unit: 'pct', score: scoreCenter(psPct), percentile: percentile(peerPS, psPct), trend: [] as number[] },
+  ];
+  const overallScore = ind.reduce((a,b)=>a+b.score,0)/ind.length;
+  const rating = overallScore >= 4.5 ? 'Strong' : overallScore >= 3.5 ? 'Moderate' : overallScore >= 2.5 ? 'Caution' : 'Concern';
+
+  return res.json({
+    id: profile.id,
+    name: profile.name,
+    type: profile.type,
+    fiscal_year: profile.header?.filing_status?.fy || 2024,
+    peers: { group: profile.type, size: peers.length },
+    overall: { score: Number(overallScore.toFixed(2)), rating },
+    indicators: ind,
+  });
+});
+
 // Type summary placeholder
 app.get('/types/:government_type/summary', (req: Request, res: Response) => {
   const { government_type } = req.params;
@@ -54,8 +130,30 @@ app.get('/types/:government_type/summary', (req: Request, res: Response) => {
 });
 
 // Dollars explorer placeholder
-app.get('/dollars', (_req: Request, res: Response) => {
-  res.json({ series: [] });
+// List government types with counts
+app.get('/types', (_req: Request, res: Response) => {
+  const profilesDir = path.join(mockDir, 'profiles');
+  const files = fs.readdirSync(profilesDir).filter(f => f.endsWith('.json'));
+  const typesMap = new Map<string, number>();
+  files.forEach(f => {
+    const p = JSON.parse(fs.readFileSync(path.join(profilesDir, f), 'utf-8')) as Profile;
+    typesMap.set(p.type, (typesMap.get(p.type) || 0) + 1);
+  });
+  const types = Array.from(typesMap.entries()).map(([name, count]) => ({ name, count }));
+  res.json({ types });
+});
+
+// Dollars explorer: average distributions by type and measure
+app.get('/dollars', (req: Request, res: Response) => {
+  const govType = (req.query.type as string) || 'City';
+  const measure = ((req.query.measure as string) || 'revenues') as 'revenues' | 'expenditures';
+  const peers = readAllProfilesOfType(govType);
+  if (!peers.length) return res.status(404).json({ error: `No profiles found for type ${govType}` });
+  const buckets = averageBuckets(peers, measure)
+    .sort((a, b) => b.pct_of_total - a.pct_of_total)
+    .map(b => ({ bucket: b.bucket, avg_amount: Math.round(b.amount), avg_pct_of_total: b.pct_of_total }));
+  const totalAvg = buckets.reduce((acc, b) => acc + b.avg_amount, 0);
+  res.json({ government_type: govType, measure, count: peers.length, total_avg: totalAvg, buckets });
 });
 
 // Export placeholder
@@ -90,6 +188,12 @@ function readAllProfilesOfType(govType: string): Profile[] {
   return files
     .map((f: string) => JSON.parse(fs.readFileSync(path.join(profilesDir, f), 'utf-8')) as Profile)
     .filter(p => p.type === govType);
+}
+
+function readAllProfiles(): Profile[] {
+  const profilesDir = path.join(mockDir, 'profiles');
+  const files = fs.readdirSync(profilesDir).filter(f => f.endsWith('.json'));
+  return files.map((f: string) => JSON.parse(fs.readFileSync(path.join(profilesDir, f), 'utf-8')) as Profile);
 }
 
 function sumAmount(buckets?: Bucket[]): number {
