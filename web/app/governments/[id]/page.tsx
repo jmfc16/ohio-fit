@@ -15,15 +15,29 @@ type Profile = {
   trends?: { revenues?: number[]; expenditures?: number[] };
 };
 
-async function getProfile(id: string): Promise<Profile> {
+async function getProfile(id: string): Promise<Profile | null> {
   const base = process.env.API_BASE_URL || 'http://localhost:4000';
-  const res = await fetch(`${base}/governments/${id}/profile`, { cache: 'no-store' });
-  if (!res.ok) throw new Error('Profile not found');
-  return res.json();
+  try {
+    const res = await fetch(`${base}/governments/${id}/profile`, { cache: 'no-store' });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
 }
 
 export default async function GovernmentProfile({ params }: { params: { id: string } }) {
   const profile = await getProfile(params.id);
+  if (!profile) {
+    const base = process.env.API_BASE_URL || 'http://localhost:4000';
+    return (
+      <article>
+        <div className="breadcrumbs">Explore / Individual Governments</div>
+        <div className="page-title"><h1 style={{margin:0}}>Profile unavailable</h1></div>
+        <div className="panel"><div className="subtle">Could not load profile. Is the API running at <code>{base}</code>?</div></div>
+      </article>
+    );
+  }
   return (
     <article>
       <div className="breadcrumbs">Explore / Individual Governments</div>

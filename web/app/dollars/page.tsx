@@ -41,7 +41,7 @@ export default async function DollarsPage({ searchParams }: { searchParams: { ty
         <div className="breadcrumbs">Explore / Navigate By Dollars</div>
         <div className="page-title"><h1 style={{margin:0}}>Navigate By Dollars</h1></div>
         <div className="panel">
-          <div className="subtle">No government types available yet.</div>
+          <div className="subtle">No government types available. Is the API running?</div>
         </div>
       </article>
     );
